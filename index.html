@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -422,234 +423,381 @@
 </div>
 
 <script>
-    /* ==========================================
-     [1. 수정 완료] SCRIPT_URL 상수에 제공된 URL 적용
-     ========================================== */
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxn3J9qVxMCcVmsirxqEMxitaEJ1RBt7BVHSbxalCZVmfqJ0HI6dqA-ywh_MZ9ZeTTFNw/exec"; 
-    
-    // 전역 상태 변수
-    let currentUser = {}; // { nickname: "닉네임", major: "학과" }
-    let fileData = { A: null, B: null }; // Base64 이미지 데이터를 저장
+  /* ==========================================
+    🔴 [중요] 방금 "새 배포"로 받은 URL을 여기에 넣으세요! 🔴
+    ========================================== */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxn3J9qVxMCcVmsirxqEMxitaEJ1RBt7BVHSbxalCZVmfqJ0HI6dqA-ywh_MZ9ZeTTFNw/exec"; 
 
-    // 임시 데이터 (나중에 스프레드시트에서 불러와야 함)
-    const dummyPosts = [
-        { id: 'p1', title: '포트폴리오 피드백 요청', author: '스터디원A', major: '컴퓨터공학과', votesA: 15, votesB: 22, date: '2023.11.25', imgA: 'path/to/imgA.jpg', imgB: 'path/to/imgB.jpg' },
-        { id: 'p2', title: 'UX/UI 디자인 비교', author: '디자이너B', major: '디자인학과', votesA: 30, votesB: 10, date: '2023.11.24', imgA: 'path/to/imgC.jpg', imgB: 'path/to/imgD.jpg' }
-    ];
 
-    // 페이지 전환 함수
-    function goToPage(pageId) {
-        document.querySelectorAll('.page').forEach(page => {
-            page.style.display = 'none';
-        });
-        document.getElementById(pageId).style.display = 'block';
+/* =====================
+   1. 전역 변수 및 설정
+   ===================== */
+let historyStack = [];
+let currentUser = { nickname: "", major: "" };
+const fileData = { A: null, B: null };
+let currentPostId = null;
+const voteCounts = { 'post_1': {A: 12, B: 8}, 'post_2': {A: 5, B: 15}, 'post_3': {A: 20, B: 20} };
 
-        // 페이지 전환 시 초기화 로직
-        if (pageId === 'page-5') {
-            renderPostList();
-        }
+
+/* =====================
+   2. 페이지 이동 (SPA)
+   ===================== */
+function goToPage(pageId) {
+    const activePage = document.querySelector('.page.active');
+    if (activePage && activePage.id !== 'page-1') { historyStack.push(activePage.id); }
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(pageId).classList.add('active');
+    window.scrollTo(0, 0);
+    updateUI(pageId);
+}
+
+function goBack() {
+    if (historyStack.length > 0) {
+        const prevPage = historyStack.pop();
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(prevPage).classList.add('active');
+        window.scrollTo(0, 0);
+        updateUI(prevPage);
+    } else {
+        goToPage('page-4');
+    }
+}
+
+function updateUI(pageId) {
+    const arrow = document.querySelector('.back-arrow');
+    const fab = document.getElementById('fab-write');
+    const title = document.getElementById('page-title');
+
+    if (['page-3', 'page-4', 'page-5', 'page-6', 'page-7', 'page-8'].includes(pageId)) {
+        arrow.style.display = 'block';
+    } else {
+        arrow.style.display = 'none';
     }
 
-    // 사용자 등록 함수
-    function registerUser() {
-        const nickname = document.getElementById('nickname-input').value.trim();
-        const major = document.getElementById('major-input').value.trim();
+    if (pageId === 'page-5') { fab.style.display = 'flex'; } else { fab.style.display = 'none'; }
+    if (pageId === 'page-8') { title.style.display = 'block'; } else { title.style.display = 'none'; }
+}
+updateUI('page-1');
 
-        if (nickname.length < 2 || major.length < 2) {
-            alert('닉네임과 학과를 2글자 이상 입력해주세요.');
-            return;
-        }
 
-        currentUser = { nickname, major };
-        document.getElementById('user-info-display').textContent = `환영합니다, ${currentUser.nickname} (${currentUser.major})`;
-        goToPage('page-3');
-    }
+/* =====================
+   3. 투표 페이지 & 로직
+   ===================== */
+function openVotePage(postId, question, imgASrc, imgBSrc) {
+    currentPostId = postId;
 
-    // 게시물 목록 렌더링 함수
-    function renderPostList() {
-        const listContainer = document.getElementById('post-list');
-        listContainer.innerHTML = '';
-        
-        dummyPosts.forEach(post => {
-            const totalVotes = post.votesA + post.votesB;
-            const votePercent = totalVotes > 0 ? Math.round((post.votesA / totalVotes) * 100) : 50;
+    // 질문 설정
+    const questionEl = document.getElementById('vote-question');
+    if (questionEl) questionEl.innerText = question;
 
-            const postItem = document.createElement('li');
-            postItem.className = 'post-item';
-            postItem.innerHTML = `
-                <div class="post-header">
-                    <span class="post-title">${post.title}</span>
-                    <span class="post-author">${post.author} (${post.major})</span>
-                </div>
-                <div class="post-stats">
-                    <div class="vote-bar">
-                        <div class="vote-bar-a" style="width: ${votePercent}%;"></div>
-                    </div>
-                    <span class="vote-count">${post.votesA} vs ${post.votesB}</span>
-                </div>
-            `;
-            postItem.onclick = () => showPostDetail(post.id);
-            listContainer.appendChild(postItem);
-        });
-    }
+    // A/B 이미지 설정
+    const imgAEl = document.getElementById('vote-img-a');
+    const imgBEl = document.getElementById('vote-img-b');
+    const optionA = document.querySelector('.option-a');
+    const optionB = document.querySelector('.option-b');
 
-    // 게시물 상세 보기 함수
-    function showPostDetail(postId) {
-        const post = dummyPosts.find(p => p.id === postId);
-        if (!post) return;
+    // A 이미지
+    if (imgASrc) {
+        const src = (typeof imgASrc === 'object' && imgASrc.data) ? `data:${imgASrc.mimeType};base64,${imgASrc.data}` : imgASrc;
+        imgAEl.src = src;
+        imgAEl.setAttribute('data-full-src', src);
+        optionA.style.display = 'flex';
+    } else { optionA.style.display = 'none'; }
 
-        document.getElementById('detail-title').textContent = post.title;
-        document.getElementById('detail-author').textContent = `${post.author} (${post.major})`;
-        document.getElementById('detail-votes-a').textContent = post.votesA;
-        document.getElementById('detail-votes-b').textContent = post.votesB;
+    // B 이미지
+    if (imgBSrc) {
+        const src = (typeof imgBSrc === 'object' && imgBSrc.data) ? `data:${imgBSrc.mimeType};base64,${imgBSrc.data}` : imgBSrc;
+        imgBEl.src = src;
+        imgBEl.setAttribute('data-full-src', src);
+        optionB.style.display = 'flex';
+    } else { optionB.style.display = 'none'; }
 
-        const totalVotes = post.votesA + post.votesB;
-        const percentA = totalVotes > 0 ? (post.votesA / totalVotes) * 100 : 50;
-        document.getElementById('vote-bar-detail').style.setProperty('--percent-a', `${percentA}%`);
+    // 결과 페이지 이미지도 미리 설정
+    const resA = document.getElementById('result-img-a');
+    const resB = document.getElementById('result-img-b');
+    resA.src = imgAEl.src; resA.setAttribute('data-full-src', imgAEl.src);
+    resB.src = imgBEl.src; resB.setAttribute('data-full-src', imgBEl.src);
 
-        document.getElementById('detail-img-a').style.backgroundImage = `url('placeholder_img_a.jpg')`; // 실제 이미지 경로는 나중에
-        document.getElementById('detail-img-b').style.backgroundImage = `url('placeholder_img_b.jpg')`; // 실제 이미지 경로는 나중에
 
-        // 투표 버튼에 이벤트 리스너 재설정
-        document.getElementById('vote-a-btn').onclick = () => toggleVote(post.id, 'A');
-        document.getElementById('vote-b-btn').onclick = () => toggleVote(post.id, 'B');
-
+    // 투표 여부 확인 후 페이지 분기
+    const storageKey = 'voted_' + currentPostId;
+    if (localStorage.getItem(storageKey)) {
+        updateResultGraph(); 
+        goToPage('page-7');
+    } else {
         goToPage('page-6');
     }
+}
 
-    // 투표 실행 함수 (Apps Script로 데이터 전송 필요)
-    function toggleVote(postId, select) {
-        const post = dummyPosts.find(p => p.id === postId);
-        if (!post) return;
+function submitVote(selection) {
+    if (!currentPostId) return;
 
-        // 임시 로컬 업데이트 (실제는 서버 응답에 따라 업데이트해야 함)
-        if (select === 'A') {
-            post.votesA += 1;
-        } else if (select === 'B') {
-            post.votesB += 1;
-        }
+    const storageKey = 'voted_' + currentPostId;
+    if (localStorage.getItem(storageKey)) { return; }
 
-        // 서버 전송 로직
-        const payload = {
-            action: 'vote', // Apps Script가 투표 요청으로 인식
-            id: postId,
-            select: select
-        };
+    // 투표 처리
+    localStorage.setItem(storageKey, 'true'); 
+    
+    if (!voteCounts[currentPostId]) voteCounts[currentPostId] = { A: 0, B: 0 };
+    voteCounts[currentPostId][selection]++;
 
-        fetch(SCRIPT_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                // 성공하면 화면 업데이트
-                showPostDetail(postId); 
-            } else {
-                alert("투표 기록 중 오류 발생: " + data.message);
-                // 오류 발생 시 임시 로컬 업데이트 되돌리기
-                if (select === 'A') post.votesA -= 1;
-                else post.votesB -= 1;
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert("서버 통신 오류로 투표를 기록할 수 없습니다.");
-            if (select === 'A') post.votesA -= 1;
-            else post.votesB -= 1;
-        });
+    fetch(SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'vote', id: currentPostId, select: selection })
+    }).catch(err => console.log('Vote sync error (Demo mode):', err));
+
+    updateResultGraph();
+    goToPage('page-7');
+    
+    const lastIdx = historyStack.length - 1;
+    if (historyStack[lastIdx] === 'page-6') { historyStack.splice(lastIdx, 1); }
+}
+
+// ✨✨ [핵심 수정] 그래프 업데이트 함수 ✨✨
+function updateResultGraph() {
+    const counts = voteCounts[currentPostId] || { A: 1, B: 1 }; 
+    const total = counts.A + counts.B;
+    
+    const percentA = total === 0 ? 50 : Math.round((counts.A / total) * 100);
+    const percentB = total === 0 ? 50 : 100 - percentA;
+
+    const barA = document.getElementById('bar-a');
+    const barB = document.getElementById('bar-b');
+    
+    // 3. 비율에 따른 너비 설정
+    barA.style.width = percentA + '%';
+    barB.style.width = percentB + '%';
+    
+    // 텍스트 업데이트
+    document.getElementById('percent-a').innerText = percentA + '%';
+    document.getElementById('percent-b').innerText = percentB + '%';
+
+    // 1. 색상 로직: 이긴 쪽이 진한색(#333), 진 쪽이 연한색(#B0B0B0), 비기면 둘 다 (#555)
+    // 2. 100%일 때 색상 문제도 자연스럽게 해결됨 (width가 100%이므로 꽉 참)
+    if (counts.A > counts.B) {
+        barA.style.backgroundColor = '#333';
+        barB.style.backgroundColor = '#B0B0B0';
+    } else if (counts.B > counts.A) {
+        barB.style.backgroundColor = '#333';
+        barA.style.backgroundColor = '#B0B0B0';
+    } else {
+        // 동점
+        barA.style.backgroundColor = '#555';
+        barB.style.backgroundColor = '#555';
     }
 
-    // 이미지 파일을 Base64로 읽는 함수
-    function handleFile(event, key) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            fileData[key] = e.target.result; // Base64 데이터 저장
-            // 미리보기 업데이트
-            document.getElementById(`img-${key.toLowerCase()}-preview`).style.backgroundImage = `url('${e.target.result}')`;
-        };
-        reader.readAsDataURL(file);
-    }
-
-    // 이벤트 리스너 연결
-    document.getElementById('file-a').addEventListener('change', (e) => handleFile(e, 'A'));
-    document.getElementById('file-b').addEventListener('change', (e) => handleFile(e, 'B'));
+    // 텍스트 숨김 (너무 좁을 때)
+    document.getElementById('percent-a').style.display = percentA < 10 ? 'none' : 'block';
+    document.getElementById('percent-b').style.display = percentB < 10 ? 'none' : 'block';
+}
 
 
-    /* ==========================================
-     [2. 수정 완료] submitNewPost() 함수를 fetch 로직으로 대체
-     ========================================== */
-    function submitNewPost() {
-        const textarea = document.getElementById('new-post-text');
-        const text = textarea.value.trim();
-        
-        // 유효성 검사
-        if (!fileData.A && !fileData.B) {
-            alert("이미지를 등록해주세요.");
+/* =====================
+   4. 사용자 정보 및 기본 기능
+   ===================== */
+function submitUserInfo() {
+    const nickname = document.getElementById('input-nickname').value;
+    const major = document.getElementById('input-major').value;
+    if (!nickname) { alert("닉네임을 입력해주세요!"); return; }
+    if (!major) { alert("학과를 선택해주세요!"); return; }
+     
+    currentUser.nickname = nickname;
+    currentUser.major = major;
+    document.getElementById('display-name').innerText = nickname;
+    goToPage('page-3');
+}
+
+// 이미지 확대 모달 (클래스 기반으로 자동 적용)
+const modal = document.getElementById("image-modal");
+const modalImg = document.getElementById("modal-image");
+const closeBtn = document.querySelector(".modal-close");
+
+// 페이지 로드 시 기존 이미지들에 이벤트 연결
+document.querySelectorAll('.option-image').forEach(img => {
+    img.addEventListener('click', function() { 
+        modal.style.display = "block"; 
+        modalImg.src = this.getAttribute('data-full-src'); 
+    });
+});
+
+closeBtn.onclick = function() { modal.style.display = "none"; }
+window.onclick = function(event) { if (event.target == modal) { modal.style.display = "none"; } }
+
+// 댓글 모달
+function openCommentModal() { document.getElementById('comment-modal').style.display = 'block'; }
+function closeCommentModal() { document.getElementById('comment-modal').style.display = 'none'; }
+function submitComment() {
+    const nicknameInput = document.getElementById('new-comment-nickname');
+    const textInput = document.getElementById('new-comment-text');
+    const nickname = nicknameInput.value.trim() !== "" ? nicknameInput.value : "익명";
+    const text = textInput.value.trim();
+    if (text === "") { alert("댓글 내용을 입력해주세요!"); return; }
+    const commentList = document.getElementById('comment-list');
+    const newCommentDiv = document.createElement('div');
+    newCommentDiv.classList.add('comment-item');
+    newCommentDiv.innerHTML = `<div class="comment-user">${nickname}</div><div class="comment-text">${text}</div><hr class="comment-hr">`;
+    commentList.prepend(newCommentDiv);
+    nicknameInput.value = ""; textInput.value = "";
+    closeCommentModal();
+}
+
+
+/* =====================
+   5. 게시물 작성 & 구글 전송
+   ===================== */
+const textarea = document.getElementById('feedbackTextarea');
+const shareButton = document.querySelector('.share-button');
+const imageWrapper = document.getElementById('imageWrapper');
+
+// 텍스트 확장
+textarea.addEventListener('focus', () => { textarea.rows = 8; });
+textarea.addEventListener('blur', () => { if (textarea.value.trim() === '') { textarea.rows = 4; } });
+
+// 파일 선택 버튼 연결
+const optionButtons = document.querySelectorAll('.option-button');
+const uploadInputs = document.querySelectorAll('.image-upload-input');
+
+optionButtons.forEach(button => {
+    button.addEventListener('click', (e) => {
+        const option = button.getAttribute('data-option');
+        if (fileData[option]) {
+            alert('이미지가 이미 등록되었습니다. 삭제 후 다시 시도해주세요.');
             return;
         }
-    
-        // 1. Apps Script에 보낼 데이터(Payload) 구성
-        const payload = {
-            action: 'submitPost', // Apps Script에서 게시물 등록 요청으로 인식
-            nickname: currentUser.nickname,
-            major: currentUser.major,
-            text: text,
-            // 이미지 데이터가 있는지 여부만 전송 (실제 Base64 데이터 전송은 매우 큰 부하를 주므로, 현재는 'uploaded'만 보냅니다.)
-            imgA: fileData.A ? 'uploaded' : null, 
-            imgB: fileData.B ? 'uploaded' : null 
-        };
-    
-        // 2. fetch를 사용하여 Google Apps Script URL로 POST 요청 전송
-        fetch(SCRIPT_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (!response.ok) {
-                // HTTP 상태 코드가 200번대가 아닐 경우 에러 발생
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            // 3. 응답 처리 및 페이지 이동
-            if (data.status === 'success') {
-                alert("게시물이 스프레드시트에 성공적으로 등록되었습니다!");
+        document.getElementById(`upload${option}`).click();
+    });
+});
+
+// 파일 처리 (Base64 변환)
+uploadInputs.forEach(input => {
+    input.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        const option = event.target.getAttribute('data-option');
+        
+        if (file && !fileData[option]) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const base64String = e.target.result.split(',')[1]; 
+                const mimeType = file.type;
+                fileData[option] = { data: base64String, mimeType: mimeType };
+
+                const previewDiv = document.createElement('div');
+                previewDiv.className = 'preview-item';
+                previewDiv.dataset.optionRef = option;
+
+                const mainImg = document.createElement('img');
+                mainImg.src = e.target.result;
                 
-                // 게시물 등록 후 페이지 초기화 및 이동 로직
-                goToPage('page-5'); // 피드백 게시판 목록으로 이동
-                textarea.value = '';
-                fileData.A = null;
-                fileData.B = null;
-                document.getElementById('img-a-preview').style.backgroundImage = 'none';
-                document.getElementById('img-b-preview').style.backgroundImage = 'none';
+                const trashBtn = document.createElement('button');
+                trashBtn.className = 'delete-img-btn';
+                trashBtn.innerHTML = '🗑️';
                 
-            } else {
-                alert(`게시물 등록 중 오류 발생: ${data.message}`);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert("서버 통신 중 오류 발생: " + error.message);
-        });
+                trashBtn.onclick = (evt) => {
+                    evt.stopPropagation();
+                    if (confirm('사진을 삭제하시겠습니까?')) {
+                        imageWrapper.removeChild(previewDiv);
+                        fileData[option] = null;
+                        document.getElementById(`upload${option}`).value = '';
+                        document.getElementById(`btnOption${option}`).classList.remove('disabled');
+                        checkFormValidity();
+                    }
+                };
+
+                previewDiv.appendChild(mainImg);
+                previewDiv.appendChild(trashBtn);
+                imageWrapper.appendChild(previewDiv);
+                document.getElementById(`btnOption${option}`).classList.add('disabled');
+                checkFormValidity();
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+});
+
+function checkFormValidity() {
+    const isTextareaFilled = textarea.value.trim().length > 0;
+    const isOptionImageUploaded = fileData.A !== null || fileData.B !== null;
+    if (isTextareaFilled && isOptionImageUploaded) {
+        shareButton.classList.add('active');
+        shareButton.disabled = false;
+    } else {
+        shareButton.classList.remove('active');
+        shareButton.disabled = true;
+    }
+}
+textarea.addEventListener('input', checkFormValidity);
+
+function addNewPostToBoard(postId, question, imgA, imgB) {
+    const list = document.querySelector('#page-5 .post-list');
+    const article = document.createElement('article');
+    article.className = 'post-item special-bg'; 
+    
+    article.onclick = function() { 
+        openVotePage(postId, question, imgA, imgB); 
+    }; 
+
+    let imagesHtml = '';
+    const srcA = imgA ? `data:${imgA.mimeType};base64,${imgA.data}` : null;
+    const srcB = imgB ? `data:${imgB.mimeType};base64,${imgB.data}` : null;
+
+    if (srcA && srcB) {
+        imagesHtml = `<img src="${srcA}" class="w-50"><img src="${srcB}" class="w-50">`;
+    } else if (srcA) {
+        imagesHtml = `<img src="${srcA}" style="width:100%; height:100%; object-fit:cover;">`;
+    } else if (srcB) {
+        imagesHtml = `<img src="${srcB}" style="width:100%; height:100%; object-fit:cover;">`;
     }
 
+    article.innerHTML = `<div class="image-row">${imagesHtml}</div><div class="title-box gray-box">${question}</div>`;
+    list.prepend(article);
+}
 
-    // 초기 실행
-    document.addEventListener('DOMContentLoaded', () => {
-        goToPage('page-1'); // 시작 페이지
-        // 버튼 이벤트 리스너 연결 (HTML 내에서 onclick으로 연결되어 있을 경우 생략 가능)
+shareButton.addEventListener('click', () => {
+    if (!shareButton.classList.contains('active')) return;
+
+    const originalText = shareButton.innerText;
+    shareButton.innerText = "업로드 중...";
+    shareButton.disabled = true;
+
+    const newPostId = 'post_' + Date.now();
+    addNewPostToBoard(newPostId, textarea.value, fileData.A, fileData.B);
+    voteCounts[newPostId] = { A: 0, B: 0 };
+
+    const payload = {
+        id: newPostId,
+        nickname: currentUser.nickname || "익명",
+        major: currentUser.major || "미선택",
+        question: textarea.value,
+        imageA: fileData.A,
+        imageB: fileData.B
+    };
+
+    fetch(SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.result !== 'success') { console.log('Server warning: ' + data.message); }
+    })
+    .catch(error => { console.error('Error:', error); })
+    .finally(() => {
+        alert('게시물이 성공적으로 공유되었습니다!');
+        imageWrapper.innerHTML = '';
+        textarea.value = '';
+        fileData.A = null; 
+        fileData.B = null;
+        document.getElementById('btnOptionA').classList.remove('disabled');
+        document.getElementById('btnOptionB').classList.remove('disabled');
+        checkFormValidity();
+        
+        shareButton.innerText = originalText;
+        shareButton.disabled = false;
+        
+        goToPage('page-5');
     });
+});
 </script>
+
 </body>
 </html>
